@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Underwater Effect Studio</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0b0f1a;
+  --panel: #111827;
+  --panel2: #1f2937;
+  --border: #374151;
+  --accent: #38bdf8;
+  --accent2: #0ea5e9;
+  --text: #e2e8f0;
+  --muted: #9ca3af;
+  --dim: #6b7280;
+}
+body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+header {
+  background: #070b14;
+  padding: 10px 20px;
+  display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid #1e293b;
+  flex-shrink: 0;
+}
+header svg { flex-shrink: 0; }
+header h1 { font-size: 1rem; font-weight: 600; color: var(--accent); letter-spacing: 0.02em; }
+header p { font-size: 0.72rem; color: var(--dim); margin-top: 1px; }
+
+#main { display: flex; flex: 1; overflow: hidden; }
+
+#canvas-wrap {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: #060912;
+  position: relative;
+  overflow: hidden;
+}
+canvas {
+  max-width: 100%; max-height: 100%;
+  display: block;
+  image-rendering: pixelated;
+}
+#drop-hint {
+  position: absolute;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  color: var(--dim); font-size: 0.85rem; pointer-events: none;
+  transition: opacity 0.3s;
+}
+#drop-hint svg { opacity: 0.4; }
+#drop-hint.hidden { opacity: 0; }
+
+#panel {
+  width: 270px; flex-shrink: 0;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+#panel-scroll {
+  flex: 1; overflow-y: auto; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+
+.card {
+  background: var(--panel2);
+  border-radius: 8px; padding: 12px;
+  border: 1px solid #283040;
+}
+.card-title {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--accent); margin-bottom: 10px; font-weight: 600;
+}
+
+/* Toggle */
+.toggle-row { display: flex; gap: 4px; }
+.tog {
+  flex: 1; padding: 7px 6px;
+  background: #111827; border: 1px solid var(--border);
+  border-radius: 6px; color: var(--muted); font-size: 0.78rem;
+  cursor: pointer; transition: all 0.15s; text-align: center;
+}
+.tog.on { background: #0c2a45; border-color: var(--accent2); color: var(--accent); }
+.tog:hover:not(.on) { border-color: #4b5563; color: var(--text); }
+
+/* Sliders */
+.row { margin-top: 8px; }
+.row:first-of-type { margin-top: 0; }
+.lbl { display: flex; justify-content: space-between; margin-bottom: 3px; }
+.lbl span { font-size: 0.75rem; color: var(--muted); }
+.lbl b { font-size: 0.75rem; color: var(--dim); font-weight: 400; font-variant-numeric: tabular-nums; }
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%; height: 4px;
+  border-radius: 2px; outline: none;
+  background: linear-gradient(to right, var(--accent2) var(--pct, 50%), #374151 var(--pct, 50%));
+  cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--accent2);
+}
+
+/* Color input */
+.color-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.color-row span { font-size: 0.75rem; color: var(--muted); }
+input[type=color] {
+  flex: 1; height: 28px; border: 1px solid var(--border);
+  border-radius: 5px; background: none; cursor: pointer; padding: 1px;
+}
+
+/* Sun pad */
+.sun-pad {
+  width: 100%; aspect-ratio: 1;
+  background: radial-gradient(circle at 50% 50%, #1c3a6e 0%, #060912 100%);
+  border-radius: 50%; border: 1px solid #283040;
+  position: relative; cursor: crosshair; user-select: none;
+  margin: 8px 0;
+}
+.sun-ring {
+  position: absolute; inset: 8px;
+  border-radius: 50%; border: 1px dashed #283040; pointer-events: none;
+}
+.horizon-line {
+  position: absolute; left: 10%; right: 10%; top: 50%;
+  height: 1px; background: rgba(56,189,248,0.2); pointer-events: none;
+}
+.sun-handle {
+  position: absolute; width: 16px; height: 16px;
+  background: radial-gradient(circle, #fde68a, #f59e0b);
+  border-radius: 50%; transform: translate(-50%,-50%);
+  box-shadow: 0 0 12px #f59e0b, 0 0 24px rgba(245,158,11,0.4);
+  pointer-events: none;
+}
+.compass { position: absolute; font-size: 9px; color: var(--dim); pointer-events: none; }
+
+/* Upload */
+.upload-lbl {
+  display: block; text-align: center;
+  padding: 10px; border: 1px dashed #374151;
+  border-radius: 7px; color: var(--muted); font-size: 0.8rem;
+  cursor: pointer; transition: all 0.15s;
+}
+.upload-lbl:hover { border-color: var(--accent2); color: var(--accent); background: rgba(14,165,233,0.05); }
+.paste-hint {
+  text-align: center; font-size: 0.7rem; color: var(--dim);
+  margin-top: 6px; padding: 4px;
+  border-radius: 5px; transition: all 0.2s;
+}
+.paste-hint.flash {
+  color: var(--accent); background: rgba(56,189,248,0.1);
+}
+
+/* Panel footer */
+#panel-foot { padding: 10px 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.btn-dl {
+  width: 100%; padding: 9px;
+  background: linear-gradient(135deg, #0c2a45, #0f3460);
+  border: 1px solid var(--accent2); border-radius: 7px;
+  color: var(--accent); font-size: 0.82rem; cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-dl:hover { background: linear-gradient(135deg, #0f3460, #1e40af); }
+
+/* Timer */
+#timer { position: absolute; top: 10px; right: 10px; font-size: 0.7rem; color: var(--dim); opacity: 0.5; }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+    <path d="M2 14 Q7 8 14 8 Q21 8 26 14" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+    <path d="M2 17 Q7 11 14 11 Q21 11 26 17" stroke="#0ea5e9" stroke-width="1" stroke-linecap="round" fill="none" stroke-dasharray="2 2"/>
+    <circle cx="14" cy="20" r="4" fill="#0c4a6e" stroke="#38bdf8" stroke-width="1"/>
+    <line x1="14" y1="4" x2="14" y2="6" stroke="#fde68a" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="9" y1="5.5" x2="10" y2="7" stroke="#fde68a" stroke-width="1" stroke-linecap="round"/>
+    <line x1="19" y1="5.5" x2="18" y2="7" stroke="#fde68a" stroke-width="1" stroke-linecap="round"/>
+    <circle cx="14" cy="4" r="2" fill="#fde68a"/>
+  </svg>
+  <div>
+    <h1>Underwater Effect Studio</h1>
+    <p>Photorealistic water surface rendering · WebGL</p>
+  </div>
+</header>
+
+<div id="main">
+  <div id="canvas-wrap">
+    <canvas id="glc" width="800" height="600"></canvas>
+    <div id="drop-hint">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <rect x="8" y="14" width="32" height="24" rx="3" stroke="#9ca3af" stroke-width="2"/>
+        <circle cx="18" cy="22" r="3" stroke="#9ca3af" stroke-width="2"/>
+        <path d="M8 30l10-8 8 8 6-4 8 8" stroke="#9ca3af" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M24 4v8M20 8l4-4 4 4" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Upload a subject image to get started</span>
+      <span style="font-size:0.7rem;color:var(--dim)">or explore the effect without one</span>
+    </div>
+    <div id="timer"></div>
+  </div>
+
+  <div id="panel">
+    <div id="panel-scroll">
+
+      <!-- Mode -->
+      <div class="card">
+        <div class="card-title">View Mode</div>
+        <div class="toggle-row">
+          <button class="tog on" id="tog-above" onclick="setMode('above')">
+            ↓ Viewer Above
+          </button>
+          <button class="tog" id="tog-below" onclick="setMode('below')">
+            ↑ Viewer Below
+          </button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="lbl"><span>Subject Depth</span><b id="lbl-depth">1.5 m</b></div>
+          <input type="range" id="sl-depth" min="0.2" max="6" step="0.1" value="1.5">
+        </div>
+      </div>
+
+      <!-- Subject image -->
+      <div class="card">
+        <div class="card-title">Subject Image</div>
+        <label class="upload-lbl" for="file-in">
+          + Upload Image (PNG / JPG)
+        </label>
+        <input type="file" id="file-in" accept="image/*" style="display:none">
+        <div class="paste-hint" id="paste-hint">or Ctrl+V / ⌘V to paste</div>
+      </div>
+
+      <!-- Sun -->
+      <div class="card">
+        <div class="card-title">Sun</div>
+        <div style="font-size:0.72rem;color:var(--dim);margin-bottom:4px">Direction — drag to reposition</div>
+        <div class="sun-pad" id="sun-pad">
+          <div class="sun-ring"></div>
+          <div class="horizon-line"></div>
+          <span class="compass" style="left:50%;top:4px;transform:translateX(-50%)">N</span>
+          <span class="compass" style="right:4px;top:50%;transform:translateY(-50%)">E</span>
+          <span class="compass" style="left:50%;bottom:4px;transform:translateX(-50%)">S</span>
+          <span class="compass" style="left:4px;top:50%;transform:translateY(-50%)">W</span>
+          <div class="sun-handle" id="sun-handle"></div>
+        </div>
+        <div class="row">
+          <div class="lbl"><span>Elevation</span><b id="lbl-elev">60°</b></div>
+          <input type="range" id="sl-elev" min="5" max="90" step="1" value="60">
+        </div>
+        <div class="row">
+          <div class="lbl"><span>Brightness</span><b id="lbl-bright">1.0</b></div>
+          <input type="range" id="sl-bright" min="0.1" max="3" step="0.05" value="1.0">
+        </div>
+      </div>
+
+      <!-- Water -->
+      <div class="card">
+        <div class="card-title">Water</div>
+        <div class="color-row">
+          <span>Color</span>
+          <input type="color" id="col-water" value="#0ea5e9">
+        </div>
+        <div class="row">
+          <div class="lbl"><span>Turbidity / Murk</span><b id="lbl-turb">0.30</b></div>
+          <input type="range" id="sl-turb" min="0" max="1" step="0.01" value="0.30">
+        </div>
+        <div class="row">
+          <div class="lbl"><span>Wave Scale</span><b id="lbl-wscale">1.0</b></div>
+          <input type="range" id="sl-wscale" min="0.2" max="3" step="0.05" value="1.0">
+        </div>
+        <div class="row">
+          <div class="lbl"><span>Wave Speed</span><b id="lbl-wspeed">1.0</b></div>
+          <input type="range" id="sl-wspeed" min="0" max="3" step="0.05" value="1.0">
+        </div>
+        <div class="row">
+          <div class="lbl"><span>Choppiness</span><b id="lbl-chop">0.5</b></div>
+          <input type="range" id="sl-chop" min="0" max="1" step="0.02" value="0.5">
+        </div>
+      </div>
+
+      <!-- Caustics -->
+      <div class="card">
+        <div class="card-title">Caustics &amp; Light</div>
+        <div class="row">
+          <div class="lbl"><span>Caustic Intensity</span><b id="lbl-cint">0.8</b></div>
+          <input type="range" id="sl-cint" min="0" max="2.5" step="0.05" value="0.8">
+        </div>
+        <div class="row">
+          <div class="lbl"><span>Caustic Scale</span><b id="lbl-cscale">1.0</b></div>
+          <input type="range" id="sl-cscale" min="0.2" max="3" step="0.05" value="1.0">
+        </div>
+        <div class="row">
+          <div class="lbl"><span>Sparkle Intensity</span><b id="lbl-spark">0.7</b></div>
+          <input type="range" id="sl-spark" min="0" max="2" step="0.05" value="0.7">
+        </div>
+        <div class="row">
+          <div class="lbl"><span>Refraction Strength</span><b id="lbl-refr">0.5</b></div>
+          <input type="range" id="sl-refr" min="0" max="1" step="0.02" value="0.5">
+        </div>
+      </div>
+
+    </div>
+    <div id="panel-foot">
+      <button class="btn-dl" onclick="downloadFrame()">↓ Download Image</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+//  State
+// =====================================================================
+const S = {
+  mode: 'above',
+  sunAz: 0.35,   // [0,1] normalized azimuth on the pad
+  sunEl: 0.35,   // [0,1] normalized on pad
+  sunElev: 60,   // degrees
+  sunBright: 1.0,
+  waterColor: [0.054, 0.647, 0.913],
+  turbidity: 0.30,
+  waveScale: 1.0,
+  waveSpeed: 1.0,
+  choppiness: 0.5,
+  causticIntensity: 0.8,
+  causticScale: 1.0,
+  sparkleIntensity: 0.7,
+  refrStrength: 0.5,
+  depth: 1.5,
+  hasSubject: false,
+  time: 0,
+};
+
+// =====================================================================
+//  WebGL
+// =====================================================================
+const canvas = document.getElementById('glc');
+const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true }) ||
+           canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true });
+if (!gl) { alert('WebGL not available in your browser.'); }
+
+// ---------- Vertex shader ----------
+const VS = `
+attribute vec2 aPos;
+varying vec2 vUV;
+void main() {
+  vUV = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+// ---------- Fragment shader ----------
+const FS = `
+precision highp float;
+varying vec2 vUV;
+
+uniform float uTime;
+uniform int   uMode;          // 0=viewer above, 1=viewer below
+uniform vec3  uSunDir;        // normalised world direction toward sun
+uniform float uSunBright;
+uniform vec3  uWaterColor;
+uniform float uTurbidity;
+uniform float uWaveScale;
+uniform float uWaveSpeed;
+uniform float uChoppiness;
+uniform float uCausticIntensity;
+uniform float uCausticScale;
+uniform float uSparkleIntensity;
+uniform float uRefrStrength;
+uniform float uDepth;
+uniform sampler2D uSubject;
+uniform int   uHasSubject;
+uniform vec2  uResolution;
+
+// ----------------------------------------------------------------
+//  Hash / noise utilities
+// ----------------------------------------------------------------
+float hash(vec2 p) {
+  p = fract(p * vec2(127.1, 311.7));
+  p += dot(p, p + 19.31);
+  return fract(p.x * p.y);
+}
+vec2 hash2(vec2 p) {
+  return fract(sin(mat2(127.1,311.7,269.5,183.3)*p) * 43758.5453);
+}
+
+float smoothNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f*f*(3.0-2.0*f);
+  float a = hash(i);
+  float b = hash(i+vec2(1,0));
+  float c = hash(i+vec2(0,1));
+  float d = hash(i+vec2(1,1));
+  return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0, a = 0.5;
+  mat2 rot = mat2(1.6, 1.2, -1.2, 1.6);
+  for(int i=0; i<5; i++) {
+    v += a * smoothNoise(p);
+    p = rot * p;
+    a *= 0.5;
+  }
+  return v;
+}
+
+// ----------------------------------------------------------------
+//  Water surface normals (two-layer FBM)
+// ----------------------------------------------------------------
+vec3 waterNormal(vec2 uv, float t) {
+  float ws = uWaveScale;
+  float sp = uWaveSpeed * t;
+  float chop = uChoppiness * 2.5 + 0.5;
+
+  // Coarse waves
+  vec2 p1 = uv * ws * 3.5;
+  vec2 d1a = p1 + vec2(sp*0.23, sp*0.17);
+  vec2 d1b = p1 + vec2(-sp*0.18, sp*0.21);
+  float eps = 0.004;
+  float h0  = fbm(d1a);
+  float hx  = fbm(d1a + vec2(eps,0.0));
+  float hy  = fbm(d1a + vec2(0.0,eps));
+  vec2 g1   = (vec2(hx-h0, hy-h0)) / eps;
+
+  // Fine ripples
+  vec2 p2 = uv * ws * 11.0;
+  vec2 d2 = p2 + vec2(sp*0.41, -sp*0.37);
+  float h0b  = fbm(d2);
+  float hxb  = fbm(d2 + vec2(eps,0.0));
+  float hyb  = fbm(d2 + vec2(0.0,eps));
+  vec2 g2    = (vec2(hxb-h0b, hyb-h0b)) / eps;
+
+  vec2 grad = g1 * chop + g2 * 0.4 * chop;
+  return normalize(vec3(-grad * 0.25, 1.0));
+}
+
+// ----------------------------------------------------------------
+//  Voronoi caustic pattern (pool / body projection)
+// ----------------------------------------------------------------
+float voronoiCaustic(vec2 uv, float t) {
+  vec2 p = uv;
+  vec2 i = floor(p);
+  float m1 = 1e9, m2 = 1e9;
+
+  for(int y=-1; y<=1; y++) for(int x=-1; x<=1; x++) {
+    vec2 cell = i + vec2(x, y);
+    vec2 rnd = hash2(cell);
+    // Animate cell centers
+    vec2 pt = cell + 0.5 + 0.4 * sin(vec2(
+      6.28318 * rnd.x + t * 0.6,
+      6.28318 * rnd.y + t * 0.5
+    ));
+    float d = length(p - pt);
+    if(d < m1) { m2 = m1; m1 = d; }
+    else if(d < m2) { m2 = d; }
+  }
+  // Bright network at cell boundaries
+  float edge = (m2 - m1);
+  float c = 1.0 - smoothstep(0.0, 0.18, edge);
+  return c * c;
+}
+
+float causticLayer(vec2 uv, float t, float scale) {
+  float c1 = voronoiCaustic(uv * scale * 4.0, t);
+  float c2 = voronoiCaustic(uv * scale * 7.0 + vec2(13.5, 7.2), t * 1.3);
+  return c1 * 0.65 + c2 * 0.35;
+}
+
+// ----------------------------------------------------------------
+//  Sparkle points (caustic focal points, viewer-below look)
+// ----------------------------------------------------------------
+float sparkle(vec2 uv, float t) {
+  float v = voronoiCaustic(uv * 3.0, t * 0.8);
+  // Only pass the very top of the distribution (Voronoi vertices, not edges)
+  float pts = pow(max(v - 0.93, 0.0) * 14.3, 2.0);
+  return pts;
+}
+
+// ----------------------------------------------------------------
+//  Specular glints
+// ----------------------------------------------------------------
+float specGlint(vec3 norm, vec3 sunDir, vec3 viewDir) {
+  vec3 h = normalize(sunDir + viewDir);
+  return pow(max(dot(norm, h), 0.0), 120.0);
+}
+
+// ----------------------------------------------------------------
+//  Main
+// ----------------------------------------------------------------
+void main() {
+  float t = uTime * uWaveSpeed;
+  vec2 uv = vUV;
+  float aspect = uResolution.x / uResolution.y;
+
+  // Correct UV for aspect in noise calculations
+  vec2 uvA = vec2(uv.x * aspect, uv.y);
+
+  // Water surface normal
+  vec3 norm = waterNormal(uvA, t);
+  vec3 viewDir = vec3(0.0, 0.0, 1.0);
+  vec3 sunDir  = normalize(uSunDir);
+
+  // ---- Refraction distortion ----
+  // How much the subject appears displaced by water surface ripples
+  float refrScale = uRefrStrength * 0.06 * min(uDepth * 0.7, 2.5);
+  vec2 refOff = norm.xy * refrScale;
+  vec2 subUV  = clamp(uv + refOff, 0.001, 0.999);
+
+  // Sample subject
+  vec3 subjectCol;
+  if(uHasSubject == 1) {
+    subjectCol = texture2D(uSubject, subUV).rgb;
+  } else {
+    // Procedural checker placeholder
+    vec2 g = floor(subUV * 8.0);
+    float chk = mod(g.x + g.y, 2.0);
+    subjectCol = mix(vec3(0.35, 0.38, 0.42), vec3(0.25, 0.28, 0.32), chk);
+  }
+
+  // ---- Depth color absorption ----
+  // Water absorbs red fastest, then green, blue persists longest
+  float d = uDepth;
+  vec3 absorb = exp(-d * uTurbidity * vec3(0.9, 0.4, 0.08));
+  vec3 tinted = subjectCol * absorb;
+
+  // Blend toward deep-water color with depth and turbidity
+  float scatter = 1.0 - exp(-d * uTurbidity * 0.6);
+  tinted = mix(tinted, uWaterColor * 0.7, scatter * 0.65);
+
+  vec3 finalCol;
+
+  if(uMode == 0) {
+    // ============================================================
+    //  VIEWER ABOVE → subject is underwater
+    // ============================================================
+
+    // Caustics: projected onto the subject from above
+    // Shift caustic UV by sun azimuth to match light direction
+    vec2 sunProj = vec2(sunDir.x, sunDir.y) * 0.15;
+    vec2 causUV = uvA + sunProj;
+    float caust = causticLayer(causUV, t, uCausticScale);
+
+    // Scale caustic by sun elevation (overhead sun = strongest caustics)
+    float elevFactor = sunDir.z * sunDir.z;
+    caust *= uCausticIntensity * uSunBright * elevFactor;
+
+    // Caustic color: water-hued bright
+    vec3 causticColor = mix(uWaterColor * 1.5 + vec3(0.3), vec3(1.0), 0.4);
+    tinted += caust * causticColor * 0.55;
+
+    // ---- Water surface specular glints ----
+    float spec = specGlint(norm, sunDir, viewDir);
+    vec3 glintColor = vec3(1.0, 0.97, 0.88) * uSunBright;
+
+    // Hard sparkle threshold + soft glow
+    float softGlow = spec * 0.4;
+    float hardGlint = step(0.85, spec) * spec;
+
+    // Semi-transparent surface layer (Fresnel tinted)
+    float fresnel = pow(1.0 - abs(dot(norm, viewDir)), 3.0);
+    vec3 surfLayer = mix(uWaterColor * 0.5, vec3(0.7, 0.85, 1.0), 0.3) * fresnel;
+
+    finalCol = tinted
+             + surfLayer * 0.18
+             + glintColor * softGlow
+             + glintColor * hardGlint * 1.2;
+
+  } else {
+    // ============================================================
+    //  VIEWER BELOW → subject is above water surface
+    // ============================================================
+
+    // Snell's window: total internal reflection outside critical cone
+    // For water n=1.333, critical angle ≈ 48.75°
+    // Snell's window covers a circle ~97.5° wide (full cone)
+    // We map this to a radius on screen
+    vec2 center = vec2(0.5);
+    vec2 cd = (uv - center) * vec2(aspect, 1.0);
+    float r = length(cd);
+    float winRadius = 0.42;  // visible cone radius (normalised)
+    float tirEdge  = smoothstep(winRadius - 0.04, winRadius + 0.04, r);
+
+    // Inside window: see distorted refracted view of subject
+    // Outside window: total internal reflection (mirror of pool/water)
+
+    // TIR color: dark water + some reflected caustic
+    float poolFbm = fbm(uvA * 2.0 + t * 0.05);
+    vec3 tirColor = uWaterColor * (0.2 + poolFbm * 0.15);
+
+    // The caustic-sparkle flares visible from below
+    float sp = sparkle(uvA, t * 0.9);
+    sp *= uSparkleIntensity * uCausticIntensity * uSunBright * (1.0 - tirEdge);
+
+    // Bright caustic network on the water surface ceiling
+    float ceilCaust = causticLayer(uvA * 0.7, t, uCausticScale);
+    ceilCaust *= (1.0 - tirEdge) * uCausticIntensity * uSunBright * 1.2;
+
+    vec3 ceilColor = mix(vec3(1.0, 0.98, 0.94), uWaterColor + 0.6, 0.3);
+    vec3 sparkColor = vec3(1.0, 0.99, 0.95) * 3.0;
+
+    // Distorted subject inside Snell's window
+    vec3 subView = tinted;
+    subView += ceilCaust * ceilColor * 0.4;
+    subView += sp * sparkColor;
+
+    // Bright ring at TIR boundary
+    float ring = exp(-abs(r - winRadius) * 45.0) * 0.8 * uSunBright;
+    vec3 ringColor = mix(vec3(0.8, 0.95, 1.0), vec3(1.0), 0.4);
+
+    finalCol = mix(subView, tirColor, tirEdge);
+    finalCol += ringColor * ring;
+
+    // Global water color tint (viewer is submerged)
+    finalCol = mix(finalCol, uWaterColor * 0.45, 0.22 + uTurbidity * 0.18);
+
+    // Ripple overlay (slight surface texture on ceiling)
+    float rippOvr = (norm.z - 0.9) * 5.0;
+    finalCol += uWaterColor * 0.08 * rippOvr;
+  }
+
+  // ---- Gamma ----
+  finalCol = pow(clamp(finalCol, 0.0, 1.0), vec3(1.0 / 2.2));
+
+  gl_FragColor = vec4(finalCol, 1.0);
+}
+`;
+
+// ---- Compile ----
+function mkShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error('Shader error:', gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, mkShader(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, mkShader(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+  console.error('Link error:', gl.getProgramInfoLog(prog));
+
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const aPosLoc = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(aPosLoc);
+gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+// ---- Subject texture ----
+const subTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, subTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+              new Uint8Array([60, 70, 90, 255]));
+
+function loadSubject(url) {
+  const img = new Image();
+  img.onload = () => {
+    // Resize canvas to match image
+    const maxW = 1200, maxH = 900;
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+    if (h > maxH) { w = Math.round(w * maxH / h); h = maxH; }
+    canvas.width = w; canvas.height = h;
+    gl.viewport(0, 0, w, h);
+
+    gl.bindTexture(gl.TEXTURE_2D, subTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    S.hasSubject = true;
+    document.getElementById('drop-hint').classList.add('hidden');
+  };
+  img.src = url;
+}
+
+// ---- Uniform cache ----
+const uf = {};
+function u(name) {
+  if (!uf[name]) uf[name] = gl.getUniformLocation(prog, name);
+  return uf[name];
+}
+
+function getSunDir() {
+  // sunAz/sunEl [0,1] → 3D direction
+  const az  = (S.sunAz - 0.5) * Math.PI * 1.8;
+  const elv = S.sunElev * Math.PI / 180;
+  return [
+    Math.cos(elv) * Math.sin(az),
+    Math.cos(elv) * Math.cos(az),
+    Math.sin(elv)
+  ];
+}
+
+let lastTime = null;
+function render(ts) {
+  if (lastTime === null) lastTime = ts;
+  S.time += (ts - lastTime) * 0.001;
+  lastTime = ts;
+
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(prog);
+
+  gl.uniform1f(u('uTime'),             S.time);
+  gl.uniform1i(u('uMode'),             S.mode === 'above' ? 0 : 1);
+  gl.uniform3fv(u('uSunDir'),          getSunDir());
+  gl.uniform1f(u('uSunBright'),        S.sunBright);
+  gl.uniform3fv(u('uWaterColor'),      S.waterColor);
+  gl.uniform1f(u('uTurbidity'),        S.turbidity);
+  gl.uniform1f(u('uWaveScale'),        S.waveScale);
+  gl.uniform1f(u('uWaveSpeed'),        S.waveSpeed);
+  gl.uniform1f(u('uChoppiness'),       S.choppiness);
+  gl.uniform1f(u('uCausticIntensity'), S.causticIntensity);
+  gl.uniform1f(u('uCausticScale'),     S.causticScale);
+  gl.uniform1f(u('uSparkleIntensity'), S.sparkleIntensity);
+  gl.uniform1f(u('uRefrStrength'),     S.refrStrength);
+  gl.uniform1f(u('uDepth'),            S.depth);
+  gl.uniform2f(u('uResolution'),       canvas.width, canvas.height);
+  gl.uniform1i(u('uHasSubject'),       S.hasSubject ? 1 : 0);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, subTex);
+  gl.uniform1i(u('uSubject'), 0);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // FPS counter
+  document.getElementById('timer').textContent =
+    (1000 / Math.max(ts - lastTime + 1, 1) | 0) + ' fps';
+
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+
+// =====================================================================
+//  Controls
+// =====================================================================
+function setMode(m) {
+  S.mode = m;
+  document.getElementById('tog-above').classList.toggle('on', m === 'above');
+  document.getElementById('tog-below').classList.toggle('on', m === 'below');
+}
+
+function hexToRgbNorm(hex) {
+  return [
+    parseInt(hex.slice(1,3),16)/255,
+    parseInt(hex.slice(3,5),16)/255,
+    parseInt(hex.slice(5,7),16)/255
+  ];
+}
+
+// Generic slider binder
+function bindSlider(id, key, lblId, fmt) {
+  const el = document.getElementById(id);
+  function update() {
+    S[key] = parseFloat(el.value);
+    document.getElementById(lblId).textContent = fmt(S[key]);
+    // Update CSS custom property for fill
+    const pct = ((S[key] - parseFloat(el.min)) / (parseFloat(el.max) - parseFloat(el.min)) * 100).toFixed(1) + '%';
+    el.style.setProperty('--pct', pct);
+  }
+  el.addEventListener('input', update);
+  update();
+}
+
+bindSlider('sl-depth',  'depth',            'lbl-depth',  v => v.toFixed(1)+' m');
+bindSlider('sl-elev',   'sunElev',          'lbl-elev',   v => Math.round(v)+'°');
+bindSlider('sl-bright', 'sunBright',        'lbl-bright', v => v.toFixed(2));
+bindSlider('sl-turb',   'turbidity',        'lbl-turb',   v => v.toFixed(2));
+bindSlider('sl-wscale', 'waveScale',        'lbl-wscale', v => v.toFixed(2));
+bindSlider('sl-wspeed', 'waveSpeed',        'lbl-wspeed', v => v.toFixed(2));
+bindSlider('sl-chop',   'choppiness',       'lbl-chop',   v => v.toFixed(2));
+bindSlider('sl-cint',   'causticIntensity', 'lbl-cint',   v => v.toFixed(2));
+bindSlider('sl-cscale', 'causticScale',     'lbl-cscale', v => v.toFixed(2));
+bindSlider('sl-spark',  'sparkleIntensity', 'lbl-spark',  v => v.toFixed(2));
+bindSlider('sl-refr',   'refrStrength',     'lbl-refr',   v => v.toFixed(2));
+
+document.getElementById('col-water').addEventListener('input', e => {
+  S.waterColor = hexToRgbNorm(e.target.value);
+});
+
+// ---- File upload ----
+document.getElementById('file-in').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) loadSubject(URL.createObjectURL(f));
+});
+
+// ---- Paste from clipboard ----
+document.addEventListener('paste', e => {
+  const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      loadSubject(URL.createObjectURL(item.getAsFile()));
+      // Flash the hint to confirm
+      const hint = document.getElementById('paste-hint');
+      hint.textContent = 'Image pasted!';
+      hint.classList.add('flash');
+      setTimeout(() => {
+        hint.textContent = 'or Ctrl+V / \u2318V to paste';
+        hint.classList.remove('flash');
+      }, 1500);
+      break;
+    }
+  }
+});
+
+// ---- Drag & drop on canvas ----
+const wrap = document.getElementById('canvas-wrap');
+wrap.addEventListener('dragover', e => e.preventDefault());
+wrap.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadSubject(URL.createObjectURL(f));
+});
+
+// ---- Sun pad ----
+const sunPad    = document.getElementById('sun-pad');
+const sunHandle = document.getElementById('sun-handle');
+let dragging = false;
+
+function moveSunPad(cx, cy) {
+  const r = sunPad.getBoundingClientRect();
+  S.sunAz = Math.max(0, Math.min(1, (cx - r.left) / r.width));
+  S.sunEl = Math.max(0, Math.min(1, (cy - r.top)  / r.height));
+  sunHandle.style.left = (S.sunAz * 100) + '%';
+  sunHandle.style.top  = (S.sunEl * 100) + '%';
+}
+
+sunPad.addEventListener('mousedown', e => { dragging = true; moveSunPad(e.clientX, e.clientY); });
+window.addEventListener('mousemove', e => { if (dragging) moveSunPad(e.clientX, e.clientY); });
+window.addEventListener('mouseup',   () => dragging = false);
+
+sunPad.addEventListener('touchstart', e => { dragging = true; moveSunPad(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, {passive:false});
+window.addEventListener('touchmove',  e => { if (dragging) moveSunPad(e.touches[0].clientX, e.touches[0].clientY); }, {passive:true});
+window.addEventListener('touchend',   () => dragging = false);
+
+// Init sun handle position
+sunHandle.style.left = (S.sunAz * 100) + '%';
+sunHandle.style.top  = (S.sunEl * 100) + '%';
+
+// ---- Download ----
+function downloadFrame() {
+  const link = document.createElement('a');
+  link.download = 'underwater-' + Date.now() + '.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+</script>
+</body>
+</html>
